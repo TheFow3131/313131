@@ -1,0 +1,597 @@
+"use strict";
+
+define(["jquery", "knockout", "other", "moment", "store"], function ($, ko, papara, moment, store) {
+
+	window.insider_object = {};
+
+	$.urlParam = function (name) {
+		var results = new RegExp('[\?&]' + name + '=([^&#]*)').exec(window.location.href);
+		if (results == null) {
+			return null;
+		}
+		return decodeURI(results[1]) || 0;
+	};
+
+	if (!jsSessionStorage.getItem('store')) { 
+		jsSessionStorage.setItem("store", 
+			ko.toJSON({
+				"error": null,
+				"userBalance": "",
+				"userCurrency": [],
+				"Currencies": [],
+				"selectedCurrency": { symbol: "", code: "", preferredDisplayCode: "", name: "", balance: 0, isBalance: false, precision: 2 },
+				"selectedCurrencyAction": { symbol: "", code: "", preferredDisplayCode: "", name: "", balance: 0, isBalance: false, precision: 2 },
+				"selectedCurrencyData": [],
+				"ErrorAddCurrency": null,
+				"SuccessAddCurrency": null,
+				"FXPrices": []
+			}));
+	}
+
+    var sendMoneyPendingRequests = ko.observable(0);
+
+    var moneyRequestsPending = ko.observable(0);
+
+    var moneyRequestsIncoming = ko.observable(0);
+
+    var moneyRequestsInvitation = ko.observable(0);
+
+    var moneyRequestsTotalRequest = ko.observable(0);
+	  
+	var withdrawalPendingRequests = ko.observable(0);
+
+	var unpaidBillsCount = ko.observable(0);
+
+	var userType = ko.observable(0);
+
+	var userBalance = ko.observable(0);
+
+	var userBalances = ko.observable();
+
+	var pUrl = store.get("pUrl") === undefined ? "../../Assets/img/icon/profilePicture.svg" : store.get("pUrl");
+
+    var fllName = store.get("fllName") === undefined ? "" : store.get("fllName");
+
+    var fName = store.get("fName") === undefined ? "" : store.get("fName");
+
+    var pictureUrl = ko.observable(pUrl);
+
+    var firstName = ko.observable(fName);
+
+	var fullName = ko.observable(fllName);
+
+    var error = ko.observable(null);
+
+    var resource = ko.observable();
+
+    var redirectUrl = ko.observable();
+
+	var showEduPageIndex = ko.observable(0);
+
+	var paparaRefId = ko.observable($.cookie("papara_ref_id"));
+
+	var receivesCashbackAtTheEndOfMonth = ko.observable(false);
+
+	var LedgerAgainId = ko.observable(null);
+
+	var Currencies = ko.observableArray();
+	var selectedCurrency = ko.observableArray();
+	var selectedCurrencyData = ko.observableArray();
+	var selectedCurrencyAction = ko.observableArray();
+	var ErrorAddCurrency = ko.observable(null);
+	var SuccessAddCurrency = ko.observable(null);
+	var userCurrency = ko.observableArray();
+	var isForeignCurrency = ko.observable(false);
+	var FXPrices = ko.observableArray();
+
+	var HelpId = ko.observable(null);
+
+	var CashBackSelect = ko.observable(null);
+
+	var clearError = function clearError() {
+		error(null);
+		ErrorAddCurrency(null);
+		SuccessAddCurrency(null);
+	};
+
+	var eduStatusType = { NotSet: 0, Student: 1, Parent: 2, Graduate: 3, GraduateParent: 4 };
+
+	var membershipPhone = ko.observable(null);
+	var membershipEmail = ko.observable(null);
+
+	var faqMainCategories = ko.observable();
+
+	var waitUntil = function waitUntil(ms) {
+		var start = new Date().getTime();
+		var end = start;
+		while (end < start + ms) {
+			end = new Date().getTime();
+		}
+	};
+
+	var formatDate = function formatDate(date) {
+		var newDate = moment(date).format('LLL');
+		var splittedDate = newDate.split(' ');
+		var day = splittedDate[0];
+		var mounth = splittedDate[1];
+		var year = splittedDate[2];
+		var hour = splittedDate[3];
+		var formatedDate = day + " " + mounth + " " + hour + "";
+		return formatedDate;
+	};
+
+	var formatTime = function formatTime(date) {
+		var newDate = moment(date).format('LLL');
+		var splittedDate = newDate.split(' ');
+		var hour = splittedDate[3];
+		var formatedTime = hour;
+		return formatedTime;
+	};
+
+	var setStorageExpireDate = function setStorageExpireDate() {
+		if (!jsSessionStorage.getItem("storageExpireDate")) {
+			var dateCookie = new Date();
+			var minutesCookie = Number(window.ResourceCacheStorageExpireDate);
+			dateCookie.setTime(dateCookie.getTime() + (minutesCookie * 60 * 1000));
+			jsSessionStorage.setItem("storageExpireDate", dateCookie);
+		}
+		if (new Date(jsSessionStorage.getItem("storageExpireDate")) < new Date()) {
+			jsSessionStorage.removeItem("storageExpireDate");
+		}
+	}
+
+	self.pendingCount = ko.observableArray();
+
+	var betaFeaturesEnabled = ko.observable();
+
+	var EntryTypes = ko.observableArray([
+		{ id: "0", Name: "Manuel İşlem Girişi", FlipTitles: false },
+		{ id: "1", Name: "Banka Transferi", FlipTitles: true },
+		{ id: "2", Name: "Papara Card", FlipTitles: false },
+		{ id: "3", Name: "Kart ile Para Yükleme", FlipTitles: false },
+		{ id: "4", Name: "Mobil Ödeme ile Para Yükleme", FlipTitles: false },
+		{ id: "5", Name: "BKM ile Para Yükleme", FlipTitles: false },
+		{ id: "6", Name: "Fiziksel Noktadan Para Yükleme", FlipTitles: false },
+		{ id: "7", Name: "Para Transferi", FlipTitles: true },
+		{ id: "8", Name: "Üye İşyeri Ödeme", FlipTitles: true },
+		{ id: "9", Name: "Ödeme Dağıtım", FlipTitles: true },
+		{ id: "10", Name: "Davet Ödülü", FlipTitles: false },
+		{ id: "11", Name: "Kantin Harcaması", FlipTitles: false },
+		{ id: "12", Name: "Harçlık Gönderme", FlipTitles: true },
+		{ id: "13", Name: "Döviz İşlemi", FlipTitles: true },
+		{ id: "14", Name: "Fatura Ödeme", FlipTitles: true },
+		{ id: "15", Name: "Cashback", FlipTitles: false },
+		{ id: "16", Name: "Kriptopara Transferi", FlipTitles: false },
+		{ id: "17", Name: "Oyun Ödemesi", FlipTitles: true },
+		{ id: "18", Name: "İstanbulkart", FlipTitles: true },
+		{ id: "19", Name: "Birikim Hesabı", FlipTitles: false },
+		{ id: "20", Name: "Kartla Para Transferi", FlipTitles: true },
+		{ id: "21", Name: "IBAN'a Para Transferi", FlipTitles: true }
+	]);
+
+	self.HighchartsOptions = ko.observable({
+		global: {
+			useUTC: false
+		},
+		lang: {
+			loading: "Yükleniyor...",
+			months: ["Ocak", "Şubat", "Mart", "Nisan", "Mayıs", "Haziran", "Temmuz", "Ağustos", "Eylül", "Ekim", "Kasım", "Aralık"],
+			weekdays: ["Pazar", "Pazartesi", "Salı", "Çarşamba", "Perşembe", "Cuma", "Cumartesi"],
+			shortMonths: ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"],
+			exportButtonTitle: "Dışarı Aktar",
+			printButtonTitle: "Yazdır",
+			rangeSelectorFrom: "Başlangış",
+			rangeSelectorTo: "Bitiş",
+			rangeSelectorZoom: "Periyot",
+			downloadPNG: "PNG Olarak indir",
+			downloadJPEG: "JPEG olarak indir",
+			downloadPDF: "PDF olarak indir",
+			downloadSVG: "SVG olarak indir",
+			resetZoom: ["Yakınlaşmayı Sıfırla"],
+			resetZoomTitle: ["Yakınlaşmayı Sıfırla"],
+			printChart: ["Yazdır"],
+			numericSymbols: null,
+			decimalPoint: ",",
+			thousandsSep: "."
+		}
+	});
+
+	var lastLedger;
+	
+	var insiderTransactionIds = {
+		"OyunOdeme": "Oyun Ödeme",
+		"FaturaOdeme": "Fatura Ödeme",
+		"YeniOgrenci": "Yeni Öğrenci",
+		"ParaIstemeTelefonNumarasi": "Para İsteme - Telefon Numarası",
+		"ParaIstemePaparaNumarasi": "Para İsteme - Papara Numarası",
+		"ParaGonderTelefonNumarasi": "Para Gönder - Telefon Numarası",
+		"ParaGonderPaparaNumarasi": "Para Gönder - Papara Numarası",
+		"ParaGonderIBAN": "Para Gönder - IBAN",
+		"PaparaCardAktif": "Papara Card Aktif",
+		"PaparaCardBasvuru": "Papara Card Başvuru",
+		"PaparaLiteCardAktif": "Papara Lite Card Aktif",
+		"EduCardEkleme": "Edu Card Ekleme",
+		"SanalKartEkleme": "Sanal Kart Ekleme",
+		"HarclikGonderme": "Harçlık Gönderme",
+		"ParaCekBankaHesabima": "Para Çek - Banka Hesabıma",
+		"DovizSatınAlma": "Döviz Satın Alma",
+		"DovizSatma": "Döviz Satma"
+	}
+	
+
+	var getUser = function getUser() {
+		globalPapara.loading();
+
+		var result, passchange;
+
+		$.ajax(window.apiEndpoint + "user", {
+			type: "get",
+			contentType: "application/json; charset=utf-8",
+			dataType: "json",
+			crossDomain: true, 
+			async: false,
+			processData: true,
+			xhrFields: { 
+				withCredentials: true
+			},
+			success: function success(response) {
+				result = response;
+				
+				self.pendingCount(result.data.pendingMoneyTransfers);
+
+				self.penddingData(self.pendingCount());
+
+				unpaidBillsCount(result.data.unpaidBillsCount);
+
+				if (response.data.usermustchangepassword === true) {
+					globalPapara.changePassLink();
+				} else {
+					var url = window.location.href;
+					var urlReplace = window.location.origin;
+					var redirectUrl = url.replace(urlReplace, '');
+					if (redirectUrl === '/personal/#!/change-password') {
+						document.location.href = '#!/dashboard';
+					}
+				}
+
+				userBalances(response.data.balances.sort(function (a, b) { return a.currency - b.currency }));
+
+				getCurrencies(response.data.balances, response.data.defaultCurrency);
+
+				userType(result.data.userType);
+
+				fullName(result.data.fullName);
+
+				betaFeaturesEnabled(result.data.betaFeaturesEnabled);
+
+				lastLedger = result.data.ledgers[0];
+
+				if (!globalPapara.getStore().selectedCurrency.isBlance) {
+					userBalance(response.data.balances[0].currencyInfo.symbol + globalPapara.addOnlyCommas(response.data.balances[0].totalBalance, response.data.balances[0].currencyInfo));
+				}
+
+				if (globalPapara.getStore().FXPrices && globalPapara.getStore().FXPrices.length === 0) {
+					getFXPrices();
+				}
+
+				$(window).on('hashchange', function (e) {
+					if ($.cookie("changePassword")) {
+						globalPapara.changePassLink();
+					}
+				});
+
+				var eduStatus = response.data.eduStatus;
+
+				if (eduStatus === eduStatusType.NotSet || eduStatus === eduStatusType.Graduate || eduStatus === eduStatusType.GraduateParent) {
+					showEduPageIndex(eduStatusType.Parent);
+				}
+				else if (eduStatus === eduStatusType.Student) {
+					showEduPageIndex(eduStatusType.NotSet);
+				} else {
+					showEduPageIndex(eduStatusType.Student);
+				}
+
+				receivesCashbackAtTheEndOfMonth(result.data.receivesCashbackAtTheEndOfMonth);
+
+				globalPapara.linkEnable();
+
+				globalPapara.loadingRemove();
+
+				$.extend(insider_object, {
+					"user": {
+						"user_id": result.data.customerId,
+						"gdpr_optin": true,
+						"name": result.data.firstName,
+						"birthday": result.data.dateOfBirth,
+						"email": result.data.email,
+						"email_optin": result.data.marketingCommunicationPermission,
+						"sms_optin": result.data.marketingCommunicationPermission
+					}
+				});
+				jsSessionStorage.setItem("user_id", result.data.customerId);
+			},
+			error: function error() {
+				globalPapara.loadingRemove();
+			}
+		});
+
+		return result;
+
+	};
+
+	var getCurrencies = function (balances, defaultCurrency) {
+		$.ajax(window.apiEndpoint + "fx/currencies", {
+			type: "GET",
+			contentType: "application/json; charset=utf-8",
+			dataType: "json",
+			crossDomain: true,
+			processData: true,
+			xhrFields: {
+				withCredentials: true
+			},
+			success: function success(response) {
+				var data = [];
+				if (response.succeeded === true) {
+					$(response.data).each(function () {
+						var fxData = this;
+						if (fxData.currencyEnum === defaultCurrency) {
+							userCurrency(fxData)
+						}
+						var balance = balances.filter(function (d) {
+							return d.currencyInfo.code === fxData.code;
+						});
+						if (balance.length > 0) {
+							data.push(jQuery.extend(fxData, { 'availableBalance': balance[0].availableBalance, 'balance': balance[0].totalBalance, 'isBlance': true }));
+						} else {
+							data.push(fxData);
+						}
+					});
+					Currencies(data.sort(function (a, b) { return (a.isBlance === b.isBlance) ? 0 : a.isBlance ? -1 : 1; }));
+
+					if (!globalPapara.getStore().selectedCurrency.isBlance) {
+						if (lastLedger && lastLedger.currency) {
+							var lastSelectedCurrency = response.data.filter(function (item) {
+								return item.currencyEnum === lastLedger.currency;
+							})[0];
+							selectedCurrency(lastSelectedCurrency);
+						} else {
+							selectedCurrency(userCurrency());
+						}
+					} else {
+						selectedCurrency(globalPapara.getStore().selectedCurrency);
+					}
+
+					selectedCurrencyAction(selectedCurrency());
+
+					$(Currencies()).each(function () {
+						if (this.code === selectedCurrency().code) {
+							selectedCurrency(jQuery.extend(selectedCurrency(), { 'balance': this.balance, 'availableBalance': this.availableBalance }))
+							userBalance(this.symbol + globalPapara.addOnlyCommas(this.balance, this));
+							return;
+						}
+					});
+
+					isForeignCurrency(userCurrency().currencyEnum !== selectedCurrency().currencyEnum);
+					globalPapara.setStore();
+					self.penddingData(self.pendingCount());
+					globalPapara.linkEnable();
+					
+				}
+			}
+		});
+	}
+
+	var getFXPrices = function () {
+		$.ajax(window.apiEndpoint + "fx/prices", {
+			type: "get",
+			contentType: "application/json; charset=utf-8",
+			dataType: "json",
+			crossDomain: true,
+			processData: true,
+			xhrFields: { withCredentials: true },
+			success: function success(response) {
+				FXPrices(response.data);
+				globalPapara.setStore();
+			}
+		});
+	}
+
+	$(document).on('click', '.currencies-select-item', function () {
+		if ($(this).parent().find('.currencies-wrap').hasClass('show')) {
+			$('.currencies-wrap').removeClass('show');
+			$('.currencies-select-item').removeClass('currencies-open currencies-open-top');
+		} else {
+			$('body, .currencies-select-item').removeClass('currencies-open currencies-open-top');
+			$('.currencies-wrap').removeClass('show');
+			$(this).addClass('currencies-open').parent().find('.currencies-wrap').addClass('show');
+			getFXPrices();
+		}
+		if (!$(this).parent().hasClass('currencies-select-top')) {
+			$('body').toggleClass('currencies-open');
+		} else {
+			$('body').toggleClass('currencies-open-top');
+		}
+		SuccessAddCurrency(null);
+		ErrorAddCurrency(null);
+		globalPapara.linkEnable();
+		globalPapara.toggleMenuRemove();
+	});
+
+	$(document).on("click", function (event) {
+		if (!$(event.target).closest(".currencies-select").length) {
+			$('.currencies-wrap').removeClass('show');
+			$('body, .currencies-select-item').removeClass('currencies-open currencies-open-top');
+		}
+	});
+
+	var clickSelectedCurrency = function (data, reload) {
+		$('.currencies-wrap').removeClass('show');
+		$('body, .currencies-select-item').removeClass('currencies-open');
+		if (data.balance !== undefined) {
+			selectedCurrency(data);
+			userBalance(selectedCurrency().symbol + globalPapara.addOnlyCommas(selectedCurrency().balance, selectedCurrency()));
+			if (!reload) {
+				setTimeout(function () {
+					getUser();
+				}, 10);
+				window.location = "/personal/#!/dashboard";
+			}
+			
+			$('#fxchart').trigger('changedCurrency');
+			$('#ledgers').trigger('changedCurrency');
+		} else {
+			selectedCurrencyData(data);
+			$('#newCurrency').show().modal('show');
+			setTimeout(function () {
+				globalPapara.linkEnable();
+			}, 500);
+		}
+		globalPapara.linkEnable();
+		selectedCurrencyAction(selectedCurrency());
+		isForeignCurrency(userCurrency().currencyEnum !== selectedCurrency().currencyEnum);
+		globalPapara.setStore();
+	}
+
+	var clickSelectedCurrencyAction = function (type) {
+		var data = Currencies().filter(function (el) {
+			return el.preferredDisplayCode === type;
+		})[0];
+		selectedCurrencyAction(data);
+		globalPapara.setStore();
+		globalPapara.linkEnable();
+	}
+
+	var addCurrency = function () {
+		globalPapara.loading('<b>Yükleniyor</b>Lütfen bekle...<p class="wrap-icon-success spinner"></p>', 'modal');
+		$.ajax(window.apiEndpoint + "user/balance", {
+			data: ko.toJSON({
+				currency: selectedCurrencyData().currencyEnum
+			}),
+			type: "POST",
+			contentType: "application/json; charset=utf-8",
+			dataType: "json",
+			crossDomain: true,
+			processData: true,
+			xhrFields: {
+				withCredentials: true
+			},
+			success: function success(response) {
+				globalPapara.loadingRemove();
+				if (response.succeeded === true) {
+					globalPapara.successIcon();
+					SuccessAddCurrency("Hesabın başarılı bir şekilde oluşturuldu.");
+					globalPapara.tagManagerError('Hesap Oluşturma', 'Hesap Oluşturma Başarılı', selectedCurrencyData().code + ' Hesabı Oluşturma Başarılı');
+					$.extend(insider_object, {
+						"transaction": {
+							"id": selectedCurrencyData().code + ' Hesabı Oluşturma'
+						}
+					});
+					getUser();
+					globalPapara.linkEnable();
+				} else {
+					ErrorAddCurrency(response.error.message);
+				}
+			},
+			error: function error(request, status, _error) {
+				globalPapara.loadingRemove();
+				$('#newCurrency').hide().modal('hide');
+			}
+		});
+	}
+
+	var clickSuccessCurrency = function () {
+		$(Currencies()).each(function () {
+			if (this.code === selectedCurrencyData().code) {
+				clickSelectedCurrency(this);
+				return;
+			}
+		});
+	}
+
+	self.pendingCount.subscribe(function () {
+
+		self.penddingData(self.pendingCount());
+
+	});
+
+
+	self.penddingData = function (data) {
+
+		sendMoneyPendingRequests(data.pendingRequests ? data.pendingRequests : []);
+
+		moneyRequestsPending(data.inviteByMoneyTransfers ? data.inviteByMoneyTransfers : []);
+
+		moneyRequestsIncoming(data.incomingRequests ? data.incomingRequests : []);
+
+		moneyRequestsInvitation(data.inviteByTransferRequests ? data.inviteByTransferRequests : []);
+
+		moneyRequestsTotalRequest(sendMoneyPendingRequests().length + moneyRequestsPending().length + moneyRequestsIncoming().length + moneyRequestsInvitation().length);
+
+		withdrawalPendingRequests(
+			data.pendingWithdrawals.filter(function (el) {
+				return el.currencyInfo.currencyEnum === globalPapara.getStore().selectedCurrency.currencyEnum;
+			})
+		);
+
+	};
+
+
+
+	if (!paparaRefId() && $.urlParam('papara_ref_id')) {
+		$.cookie("papara_ref_id", $.urlParam('papara_ref_id'), { expires: 90 });
+		paparaRefId($.urlParam('papara_ref_id'));
+	}
+
+	return {
+        error: error,
+        resource: resource,
+        waitUntil: waitUntil,
+        firstName: firstName,
+        fullName: fullName, 
+        pictureUrl: pictureUrl,
+		clearError: clearError,
+		redirectUrl: redirectUrl,
+        userType: userType,
+		userBalance: userBalance,
+		userBalances: userBalances,
+        sendMoneyPendingRequests: sendMoneyPendingRequests,
+        moneyRequestsPending: moneyRequestsPending,
+        moneyRequestsIncoming: moneyRequestsIncoming,
+        moneyRequestsInvitation: moneyRequestsInvitation,
+        moneyRequestsTotalRequest: moneyRequestsTotalRequest, 
+        withdrawalPendingRequests: withdrawalPendingRequests,
+		formatDate: formatDate,
+		formatTime: formatTime,
+        getUser: getUser,
+        showEduPageIndex: showEduPageIndex,
+		eduStatusType: eduStatusType,
+		membershipPhone: membershipPhone,
+		membershipEmail: membershipEmail,
+		faqMainCategories: faqMainCategories,
+		paparaRefId: paparaRefId,
+		receivesCashbackAtTheEndOfMonth: receivesCashbackAtTheEndOfMonth,
+		clickSelectedCurrency: clickSelectedCurrency,
+		clickSelectedCurrencyAction: clickSelectedCurrencyAction,
+		addCurrency: addCurrency,
+		clickSuccessCurrency: clickSuccessCurrency,
+		userCurrency: userCurrency,
+		Currencies: Currencies,
+		selectedCurrency: selectedCurrency,
+		selectedCurrencyData: selectedCurrencyData,
+		selectedCurrencyAction: selectedCurrencyAction,
+		ErrorAddCurrency: ErrorAddCurrency,
+		SuccessAddCurrency: SuccessAddCurrency,
+		HighchartsOptions: HighchartsOptions,
+		LedgerAgainId: LedgerAgainId,
+		HelpId: HelpId,
+		CashBackSelect: CashBackSelect,
+		insiderTransactionIds: insiderTransactionIds,
+		EntryTypes: EntryTypes,
+		setStorageExpireDate: setStorageExpireDate,
+		isForeignCurrency: isForeignCurrency,
+		FXPrices: FXPrices,
+		unpaidBillsCount: unpaidBillsCount,
+		betaFeaturesEnabled: betaFeaturesEnabled
+	};
+}); 
+
